@@ -17,6 +17,7 @@ app.use(morgan('dev'));
 const v1Tasks = require('./routes/v1/tasks.routes');
 const v1Users = require('./routes/v1/users.routes');
 const v2Tasks = require('./routes/v2/tasks.routes');
+const v1Auth = require('./routes/v1/auth.routes');
 
 // (debug ชนิดของตัวแปรได้ แต่ไม่เกี่ยวกับ error นี้)
 // console.log('typeof v1Tasks =', typeof v1Tasks);
@@ -30,6 +31,7 @@ app.get('/health', (req, res) => res.json({ ok: true }));
 app.use('/api/v1/tasks', v1Tasks);
 app.use('/api/v1/users', v1Users);
 app.use('/api/v2/tasks', v2Tasks);
+app.use('/api/v1/auth', v1Auth);
 
 // 7) Error handler (ต้องเป็นฟังก์ชัน)
 const errorHandler = require('./middleware/errorHandler');
