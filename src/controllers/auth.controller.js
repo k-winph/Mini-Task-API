@@ -67,24 +67,51 @@ async function refresh(req, res, next) {
 
 async function logout(req, res, next) {
   try {
-    const token = req.body.refreshToken;
-    if (!token) return res.status(400).json({ error: { code: 'NO_TOKEN', message: 'Missing refresh token' } });
+    // 1) ดึง refresh token จากหลายแหล่ง
+    const rt =
+      (req.body && req.body.refreshToken) ||
+      req.headers['x-refresh-token'] ||
+      (req.cookies && req.cookies.refreshToken);
 
-    let payload;
-    try {
-      payload = verifyRefreshToken(token);
-    } catch (e) {
-      const code = (e instanceof jwt.TokenExpiredError) ? 'TOKEN_EXPIRED' : 'INVALID_TOKEN';
-      return res.status(401).json({ error: { code, message: e.message } });
+    if (!rt) {
+      return res.status(400).json({
+        error: {
+          code: 'MISSING_REFRESH_TOKEN',
+          message: 'refreshToken is required in body or x-refresh-token header',
+          details: null,
+          timestamp: new Date().toISOString(),
+          path: req.originalUrl
+        }
+      });
     }
 
+    // 2) verify และดึง tokenId ออกมา
+    let payload;
+    try {
+      payload = jwt.verify(rt, process.env.JWT_REFRESH_SECRET);
+    } catch (e) {
+      return res.status(403).json({
+        error: {
+          code: 'INVALID_TOKEN',
+          message: e.message || 'Invalid or expired refresh token',
+          details: null,
+          timestamp: new Date().toISOString(),
+          path: req.originalUrl
+        }
+      });
+    }
+
+    // 3) เพิกถอนใน DB
     await prisma.refreshToken.update({
       where: { tokenId: payload.tokenId },
       data: { revoked: true }
     });
 
-    return res.json({ message: 'Logged out' });
-  } catch (err) { next(err); }
+    // 4) สำเร็จ
+    return res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
 }
 
 module.exports = { register, login, refresh, logout };

@@ -4,14 +4,31 @@ const authenticate = require('../../middleware/authenticate');
 const abac = require('../../middleware/abac');
 const idempotency = require('../../middleware/idempotency');
 
+/** helper: แปลง :id ให้เป็น Number และตรวจความถูกต้อง */
+function parseIdParam(req, res, next) {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    return res.status(400).json({
+      error: {
+        code: 'INVALID_ID',
+        message: 'param :id must be a positive integer',
+        details: null,
+        timestamp: new Date().toISOString(),
+        path: req.originalUrl
+      }
+    });
+  }
+  req.params.id = id; // เขียนทับให้เป็น Number
+  next();
+}
+
 /**
  * @openapi
  * /api/v2/tasks:
  *   get:
  *     summary: Get all tasks visible to current user
- *     description: Returns tasks that are public or owned by the current user (or admin).
- *     tags:
- *       - Tasks v2
+ *     description: Returns tasks that are public or owned by the current user. If current user is admin, returns all tasks.
+ *     tags: [Tasks v2]
  *     security:
  *       - bearerAuth: []
  *     responses:
@@ -24,26 +41,35 @@ const idempotency = require('../../middleware/idempotency');
  *               items:
  *                 type: object
  *                 properties:
- *                   id: { type: string }
- *                   title: { type: string }
- *                   description: { type: string }
- *                   status: { type: string }
- *                   priority: { type: string }
+ *                   id: { type: integer, example: 1 }
+ *                   title: { type: string, example: "Fix bug" }
+ *                   description: { type: string, nullable: true }
+ *                   status: { type: string, enum: [pending, in_progress, completed] }
+ *                   priority: { type: string, enum: [low, medium, high] }
  *                   isPublic: { type: boolean }
- *                   ownerId: { type: string }
+ *                   ownerId: { type: integer, example: 1 }
+ *                   assignedTo: { type: integer, nullable: true, example: 2 }
+ *                   createdAt: { type: string, format: date-time }
+ *                   updatedAt: { type: string, format: date-time }
  */
 router.get('/', authenticate, async (req, res, next) => {
   try {
+    const isAdmin = req.user?.role === 'admin';
+
+    const where = isAdmin
+      ? {} // แอดมินเห็นทั้งหมด
+      : {
+          OR: [
+            { isPublic: true },
+            { ownerId: req.user.userId }
+          ]
+        };
+
     const tasks = await prisma.task.findMany({
-      where: {
-        OR: [
-          { isPublic: true },
-          { ownerId: req.user.userId },
-          { owner: { role: 'admin' } }
-        ]
-      },
+      where,
       orderBy: { createdAt: 'desc' }
     });
+
     res.json(tasks);
   } catch (err) {
     next(err);
@@ -55,9 +81,8 @@ router.get('/', authenticate, async (req, res, next) => {
  * /api/v2/tasks:
  *   post:
  *     summary: Create a new task (idempotent)
- *     description: Create a new task. If Idempotency-Key header is provided and already used, returns the cached result.
- *     tags:
- *       - Tasks v2
+ *     description: Create a new task. If Idempotency-Key header is provided and already used (not expired), returns the cached result.
+ *     tags: [Tasks v2]
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -73,14 +98,12 @@ router.get('/', authenticate, async (req, res, next) => {
  *         application/json:
  *           schema:
  *             type: object
- *             required:
- *               - title
+ *             required: [title]
  *             properties:
- *               title: { type: string }
- *               description: { type: string }
- *               priority:
- *                 type: string
- *                 enum: [low, medium, high]
+ *               title: { type: string, example: "Fix Bug #101" }
+ *               description: { type: string, nullable: true }
+ *               priority: { type: string, enum: [low, medium, high], default: medium }
+ *               isPublic: { type: boolean, default: false }
  *     responses:
  *       201:
  *         description: Task created
@@ -89,7 +112,7 @@ router.get('/', authenticate, async (req, res, next) => {
  */
 router.post('/', authenticate, idempotency, async (req, res, next) => {
   try {
-    const { title, description, priority } = req.body;
+    const { title, description, priority, isPublic } = req.body;
     if (!title) {
       return res.status(400).json({ error: { code: 'MISSING_FIELD', message: 'Title is required' } });
     }
@@ -98,7 +121,8 @@ router.post('/', authenticate, idempotency, async (req, res, next) => {
       data: {
         title,
         description,
-        priority: priority || 'medium',
+        priority: ['low', 'medium', 'high'].includes(priority) ? priority : 'medium',
+        isPublic: typeof isPublic === 'boolean' ? isPublic : false,
         ownerId: req.user.userId
       }
     });
@@ -113,17 +137,15 @@ router.post('/', authenticate, idempotency, async (req, res, next) => {
  * /api/v2/tasks/{id}/status:
  *   patch:
  *     summary: Update task status (owner or admin only)
- *     description: Only the task owner or admin can update task status.
- *     tags:
- *       - Tasks v2
+ *     description: Only the task owner or an admin can update the status of a task.
+ *     tags: [Tasks v2]
  *     security:
  *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
  *         required: true
- *         schema:
- *           type: string
+ *         schema: { type: integer, example: 1 }
  *         description: Task ID
  *     requestBody:
  *       required: true
@@ -131,27 +153,24 @@ router.post('/', authenticate, idempotency, async (req, res, next) => {
  *         application/json:
  *           schema:
  *             type: object
- *             required:
- *               - status
+ *             required: [status]
  *             properties:
  *               status:
  *                 type: string
  *                 enum: [pending, in_progress, completed]
  *     responses:
- *       200:
- *         description: Task status updated successfully
- *       400:
- *         description: Invalid status
- *       403:
- *         description: Forbidden - ABAC policy denied
+ *       200: { description: Task status updated successfully }
+ *       400: { description: Invalid status or id }
+ *       403: { description: Forbidden - ABAC policy denied }
  */
 const canAccessTask = async (req) => {
+  // ตอนนี้ req.params.id ถูก parse เป็น Number แล้ว (จาก parseIdParam)
   const task = await prisma.task.findUnique({ where: { id: req.params.id } });
   if (!task) return false;
   return task.ownerId === req.user.userId || req.user.role === 'admin';
 };
 
-router.patch('/:id/status', authenticate, abac(canAccessTask), async (req, res, next) => {
+router.patch('/:id/status', parseIdParam, authenticate, abac(canAccessTask), async (req, res, next) => {
   try {
     const { status } = req.body;
     if (!['pending', 'in_progress', 'completed'].includes(status)) {
@@ -159,7 +178,7 @@ router.patch('/:id/status', authenticate, abac(canAccessTask), async (req, res, 
     }
 
     const updated = await prisma.task.update({
-      where: { id: req.params.id },
+      where: { id: req.params.id }, // เป็น Number แล้ว
       data: { status }
     });
     res.json(updated);

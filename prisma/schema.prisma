@@ -2,33 +2,37 @@ datasource db {
   provider = "mysql"
   url      = env("DATABASE_URL")
 }
+
 generator client {
   provider = "prisma-client-js"
 }
 
 model User {
-  id                  String   @id @default(cuid())
-  email               String   @unique
-  password            String
-  name                String
-  role                Role     @default(user)     // 'user' | 'premium' | 'admin':contentReference[oaicite:7]{index=7}
-  isPremium           Boolean  @default(false)
-  subscriptionExpiry  DateTime?
-  createdAt           DateTime @default(now())
-  tasksOwned          Task[]   @relation("OwnerTasks")
-  tasksAssigned       Task[]   @relation("AssignedTasks")
-  refreshTokens       RefreshToken[]
+  id                 Int       @id @default(autoincrement())
+  email              String    @unique
+  password           String
+  name               String
+  role               Role      @default(user)
+  isPremium          Boolean   @default(false)
+  subscriptionExpiry DateTime?
+  createdAt          DateTime  @default(now())
+
+  // relations
+  tasksOwned      Task[]           @relation("OwnerTasks")
+  tasksAssigned   Task[]           @relation("AssignedTasks")
+  refreshTokens   RefreshToken[]   @relation("UserRefreshTokens")
+  idempotencyKeys IdempotencyKey[] @relation("UserIdempotencyKeys")
 }
 
 model Task {
-  id          String   @id @default(cuid())
+  id          Int      @id @default(autoincrement())
   title       String
   description String?
-  status      Status   @default(pending)          // 'pending' | 'in_progress' | 'completed':contentReference[oaicite:8]{index=8}
-  priority    Priority @default(medium)           // 'low' | 'medium' | 'high':contentReference[oaicite:9]{index=9}
+  status      Status   @default(pending)
+  priority    Priority @default(medium)
   isPublic    Boolean  @default(false)
-  ownerId     String
-  assignedTo  String?
+  ownerId     Int
+  assignedTo  Int?
   owner       User     @relation("OwnerTasks", fields: [ownerId], references: [id])
   assignee    User?    @relation("AssignedTasks", fields: [assignedTo], references: [id])
   createdAt   DateTime @default(now())
@@ -36,22 +40,26 @@ model Task {
 }
 
 model IdempotencyKey {
-  key        String   @id
-  userId     String
-  endpoint   String
+  id          Int      @id @default(autoincrement())
+  key         String   @unique
+  userId      Int
+  endpoint    String
   requestHash String
   response    Json
-  createdAt  DateTime @default(now())
-  expiresAt  DateTime
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime
+  user User @relation("UserIdempotencyKeys", fields: [userId], references: [id])
 }
 
 model RefreshToken {
-  id        String   @id @default(cuid())
-  userId    String
-  tokenId   String   @unique    // ตรงสเปค refresh payload มี tokenId:contentReference[oaicite:10]{index=10}
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  tokenId   String   @unique
   revoked   Boolean  @default(false)
   createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id])
+
+  // relation to User (ใช้ชื่อเดียวกับฝั่ง User)
+  user User @relation("UserRefreshTokens", fields: [userId], references: [id])
 }
 
 enum Role {

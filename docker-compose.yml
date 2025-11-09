@@ -12,12 +12,6 @@ services:
     volumes:
       - dbdata:/var/lib/mysql
 
-  adminer:
-    image: adminer
-    restart: unless-stopped
-    ports:
-      - "8080:8080"
-
   phpmyadmin:
     image: phpmyadmin/phpmyadmin
     container_name: mini_phpmyadmin
@@ -25,7 +19,7 @@ services:
     environment:
       PMA_HOST: db          # ชี้ไปที่ชื่อ service ของ MySQL ใน compose (คือ "db")
       PMA_PORT: 3306
-      PMA_USER: root        # ไม่ใส่ก็ได้ จะกรอกหน้าเว็บแทน
+      PMA_USER: root
       PMA_PASSWORD: password
     depends_on:
       - db
