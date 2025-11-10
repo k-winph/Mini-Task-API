@@ -45,9 +45,8 @@ function parseSort(sortStr) {
  * /api/v2/tasks:
  *   get:
  *     summary: Get all tasks visible to current user (supports filtering, sorting, pagination)
+ *     description: Authentication **optional**. Anonymous sees public tasks only; logged-in sees public + own; admin sees all.
  *     tags: [Tasks v2]
- *     security:
- *       - bearerAuth: []
  *     parameters:
  *       - in: query
  *         name: status
@@ -66,7 +65,7 @@ function parseSort(sortStr) {
  *         schema:
  *           type: string
  *           example: createdAt:desc
- *           description: "Field:direction (createdAt|updatedAt|title|priority|status) : (asc|desc)"
+ *           description: "Field:direction (createdAt|updatedAt|title|priority|status):(asc|desc)"
  *       - in: query
  *         name: page
  *         schema: { type: integer, minimum: 1, default: 1 }
@@ -77,8 +76,9 @@ function parseSort(sortStr) {
  *       200:
  *         description: OK - list of tasks
  */
-router.get('/', authenticate, async (req, res, next) => {
+router.get('/', async (req, res, next) => {
   try {
+    const isAuthed = !!req.user;
     const isAdmin = req.user?.role === 'admin';
 
     const { status, priority } = req.query;
@@ -86,28 +86,34 @@ router.get('/', authenticate, async (req, res, next) => {
     const isPublic = asBool(req.query.isPublic);
     const orderBy = parseSort(req.query.sort);
 
-    const page = Math.max(1, Number(req.query.page || 1));
-    const limit = Math.max(1, Math.min(100, Number(req.query.limit || 10)));
-    const skip = (page - 1) * limit;
-    const take = limit;
+    const toSafeInt = (v, def) => {
+      const n = parseInt(v, 10);
+      return Number.isFinite(n) && n > 0 ? n : def;
+    };
 
-    const where = {
+    const page  = toSafeInt(req.query.page, 1);
+    const limit = Math.min(100, toSafeInt(req.query.limit, 10));
+    const skip  = (page - 1) * limit;
+    const take  = limit;
+
+    const baseFilter = {
       ...(status ? { status } : {}),
       ...(priority ? { priority } : {}),
       ...(Number.isInteger(assignedTo) ? { assignedTo } : {}),
       ...(typeof isPublic === 'boolean' ? { isPublic } : {}),
-      ...(!isAdmin
-        ? { OR: [{ isPublic: true }, { ownerId: req.user.userId }] }
-        : {}),
     };
 
+    const visibility =
+      isAdmin
+        ? {}
+        : isAuthed
+          ? { OR: [{ isPublic: true }, { ownerId: req.user.userId }] }
+          : { isPublic: true };
+
+    const where = { ...baseFilter, ...visibility };
+
     const [items, total] = await Promise.all([
-      prisma.task.findMany({
-        where,
-        orderBy,
-        skip,
-        take,
-      }),
+      prisma.task.findMany({ where, orderBy, skip, take }),
       prisma.task.count({ where }),
     ]);
 
@@ -175,8 +181,8 @@ router.post('/', authenticate, idempotency, async (req, res, next) => {
  * /api/v2/tasks/{id}:
  *   get:
  *     summary: Get task by id (full)
+ *     description: Authentication **optional**. Anonymous can view only public tasks.
  *     tags: [Tasks v2]
- *     security: [ { bearerAuth: [] } ]
  *     parameters:
  *       - in: path
  *         name: id
@@ -186,11 +192,15 @@ router.post('/', authenticate, idempotency, async (req, res, next) => {
  *       200: { description: OK }
  *       404: { description: Not found or not visible }
  */
-router.get('/:id', parseIdParam, authenticate, async (req, res, next) => {
+router.get('/:id', parseIdParam, async (req, res, next) => {
   try {
     const task = await prisma.task.findUnique({ where: { id: req.params.id } });
     if (!task) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Task not found' } });
-    const canSee = task.isPublic || task.ownerId === req.user.userId || req.user.role === 'admin';
+
+    const isAuthed = !!req.user;
+    const isAdmin  = req.user?.role === 'admin';
+    const canSee = isAdmin || task.isPublic || (isAuthed && task.ownerId === req.user.userId);
+
     if (!canSee) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Task not found' } });
     res.json(task);
   } catch (err) { next(err); }
@@ -230,6 +240,8 @@ const canAccessTask = async (req) => {
  *               assignedTo: { type: integer, nullable: true }
  *     responses:
  *       200: { description: Updated }
+ *       400: { description: Invalid payload }
+ *       403: { description: Forbidden }
  */
 router.put('/:id', parseIdParam, authenticate, abac(canAccessTask), async (req, res, next) => {
   try {
@@ -241,6 +253,7 @@ router.put('/:id', parseIdParam, authenticate, abac(canAccessTask), async (req, 
     if (status && !['pending', 'in_progress', 'completed'].includes(status)) {
       return res.status(400).json({ error: { code: 'INVALID_STATUS', message: 'Invalid task status' } });
     }
+
     const updated = await prisma.task.update({
       where: { id: req.params.id },
       data: {
@@ -270,6 +283,7 @@ router.put('/:id', parseIdParam, authenticate, abac(canAccessTask), async (req, 
  *         schema: { type: integer }
  *     responses:
  *       200: { description: Deleted }
+ *       403: { description: Forbidden }
  */
 router.delete('/:id', parseIdParam, authenticate, abac(canAccessTask), async (req, res, next) => {
   try {
@@ -302,6 +316,8 @@ router.delete('/:id', parseIdParam, authenticate, abac(canAccessTask), async (re
  *               status: { type: string, enum: [pending, in_progress, completed] }
  *     responses:
  *       200: { description: Task status updated successfully }
+ *       400: { description: Invalid status or id }
+ *       403: { description: Forbidden - ABAC policy denied }
  */
 router.patch('/:id/status', parseIdParam, authenticate, abac(canAccessTask), async (req, res, next) => {
   try {
