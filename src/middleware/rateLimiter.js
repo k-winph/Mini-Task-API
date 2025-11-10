@@ -1,4 +1,3 @@
-// src/middleware/rateLimiter.js
 const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 
 const WINDOW_MS = 15 * 60 * 1000;           

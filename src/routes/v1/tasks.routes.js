@@ -91,27 +91,38 @@ router.post('/', authenticate, idempotency, async (req, res, next) => {
   try {
     const { title, description, priority, isPublic } = req.body;
     if (!title) {
-      return res
-        .status(400)
-        .json({ error: { code: 'MISSING_FIELD', message: 'Title is required' } });
+      return res.status(400).json({ error: { code: 'MISSING_FIELD', message: 'Title is required' } });
+    }
+
+    const wantsHigh = (priority || 'medium') === 'high';
+    if (wantsHigh) {
+      const u = req.user || {};
+      const isPremiumValid = !!u.isPremium && u.subscriptionExpiry && new Date(u.subscriptionExpiry) > new Date();
+      const allowed = u.role === 'admin' || isPremiumValid;
+      if (!allowed) {
+        return res.status(403).json({
+          error: {
+            code: 'FORBIDDEN_HIGH_PRIORITY',
+            message: 'High priority requires premium (active) or admin',
+          },
+        });
+      }
     }
 
     const task = await prisma.task.create({
       data: {
         title,
         description,
-        priority: ['low', 'medium', 'high'].includes(priority) ? priority : 'medium',
+        priority: ['low','medium','high'].includes(priority) ? priority : 'medium',
         isPublic: typeof isPublic === 'boolean' ? isPublic : false,
-        ownerId: req.user.userId,
+        ownerId: req.user.userId
       },
-      select: { id: true, title: true, status: true },
+      select: { id: true, title: true, status: true }
     });
-
-    res.status(201).json(pickBasic(task));
-  } catch (err) {
-    next(err);
-  }
+    res.status(201).json({ id: task.id, title: task.title, status: task.status });
+  } catch (err) { next(err); }
 });
+
 
 /**
  * @openapi
@@ -241,6 +252,20 @@ router.put('/:id', parseIdParam, authenticate, abac(canAccessTask), async (req, 
       return res.status(400).json({ error: { code: 'INVALID_STATUS', message: 'Invalid task status' } });
     }
 
+    if (priority === 'high') {
+      const u = req.user || {};
+      const isPremiumValid = !!u.isPremium && u.subscriptionExpiry && new Date(u.subscriptionExpiry) > new Date();
+      const allowed = u.role === 'admin' || isPremiumValid;
+      if (!allowed) {
+        return res.status(403).json({
+          error: {
+            code: 'FORBIDDEN_HIGH_PRIORITY_UPDATE',
+            message: 'Only active premium users or admin can set priority to high',
+          },
+        });
+      }
+    }
+
     const updated = await prisma.task.update({
       where: { id: req.params.id },
       data: {
@@ -250,13 +275,11 @@ router.put('/:id', parseIdParam, authenticate, abac(canAccessTask), async (req, 
         status: status ?? undefined,
         isPublic: typeof isPublic === 'boolean' ? isPublic : undefined,
       },
-      select: { id: true, title: true, status: true },
+      select: { id: true, title: true, status: true }
     });
 
-    res.json(pickBasic(updated));
-  } catch (err) {
-    next(err);
-  }
+    res.json({ id: updated.id, title: updated.title, status: updated.status });
+  } catch (err) { next(err); }
 });
 
 /**

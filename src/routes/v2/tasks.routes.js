@@ -163,6 +163,22 @@ router.post('/', authenticate, idempotency, async (req, res, next) => {
     if (!title) {
       return res.status(400).json({ error: { code: 'MISSING_FIELD', message: 'Title is required' } });
     }
+
+    const wantsHigh = (priority || 'medium') === 'high';
+    if (wantsHigh) {
+      const u = req.user || {};
+      const isPremiumValid = !!u.isPremium && u.subscriptionExpiry && new Date(u.subscriptionExpiry) > new Date();
+      const allowed = u.role === 'admin' || isPremiumValid;
+      if (!allowed) {
+        return res.status(403).json({
+          error: {
+            code: 'FORBIDDEN_HIGH_PRIORITY',
+            message: 'High priority requires premium (active) or admin',
+          },
+        });
+      }
+    }
+
     const task = await prisma.task.create({
       data: {
         title,
@@ -247,11 +263,25 @@ router.put('/:id', parseIdParam, authenticate, abac(canAccessTask), async (req, 
   try {
     const { title, description, priority, status, isPublic, assignedTo } = req.body;
     if (!title) return res.status(400).json({ error: { code: 'MISSING_FIELD', message: 'Title is required' } });
-    if (priority && !['low', 'medium', 'high'].includes(priority)) {
+    if (priority && !['low','medium','high'].includes(priority)) {
       return res.status(400).json({ error: { code: 'INVALID_PRIORITY', message: 'Invalid task priority' } });
     }
-    if (status && !['pending', 'in_progress', 'completed'].includes(status)) {
+    if (status && !['pending','in_progress','completed'].includes(status)) {
       return res.status(400).json({ error: { code: 'INVALID_STATUS', message: 'Invalid task status' } });
+    }
+
+    if (priority === 'high') {
+      const u = req.user || {};
+      const isPremiumValid = !!u.isPremium && u.subscriptionExpiry && new Date(u.subscriptionExpiry) > new Date();
+      const allowed = u.role === 'admin' || isPremiumValid;
+      if (!allowed) {
+        return res.status(403).json({
+          error: {
+            code: 'FORBIDDEN_HIGH_PRIORITY_UPDATE',
+            message: 'Only active premium users or admin can set priority to high',
+          },
+        });
+      }
     }
 
     const updated = await prisma.task.update({
