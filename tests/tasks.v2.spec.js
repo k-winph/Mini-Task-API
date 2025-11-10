@@ -14,7 +14,6 @@ describe('Tasks v2 - Idempotency & ABAC', () => {
     await reg('u2@test.com');
     await reg('admin@test.com');
 
-    // promote admin (ผ่าน endpoint ของคุณ หรือปรับ DB ด้วย Prisma ภายนอกก่อนเทส)
     const prisma = require('../src/config/prisma');
     await prisma.user.update({
       where: { email: 'admin@test.com' },

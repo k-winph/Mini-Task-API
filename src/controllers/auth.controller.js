@@ -43,12 +43,12 @@ async function login(req, res, next) {
 
 async function refresh(req, res, next) {
   try {
-    const token = req.body.refreshToken;                 // <- ใช้ชื่อ token แทน
+    const token = req.body.refreshToken;
     if (!token) return res.status(400).json({ error: { code: 'NO_TOKEN', message: 'Missing refresh token' } });
 
     let payload;
     try {
-      payload = verifyRefreshToken(token);               // <- เก็บผลตรวจใน payload
+      payload = verifyRefreshToken(token);
     } catch (e) {
       const code = (e instanceof jwt.TokenExpiredError) ? 'TOKEN_EXPIRED' : 'INVALID_TOKEN';
       return res.status(401).json({ error: { code, message: e.message } });
@@ -67,7 +67,6 @@ async function refresh(req, res, next) {
 
 async function logout(req, res, next) {
   try {
-    // 1) ดึง refresh token จากหลายแหล่ง
     const rt =
       (req.body && req.body.refreshToken) ||
       req.headers['x-refresh-token'] ||
@@ -85,7 +84,6 @@ async function logout(req, res, next) {
       });
     }
 
-    // 2) verify และดึง tokenId ออกมา
     let payload;
     try {
       payload = jwt.verify(rt, process.env.JWT_REFRESH_SECRET);
@@ -101,13 +99,11 @@ async function logout(req, res, next) {
       });
     }
 
-    // 3) เพิกถอนใน DB
     await prisma.refreshToken.update({
       where: { tokenId: payload.tokenId },
       data: { revoked: true }
     });
 
-    // 4) สำเร็จ
     return res.json({ ok: true });
   } catch (err) {
     next(err);

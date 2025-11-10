@@ -1,4 +1,4 @@
-require('dotenv').config();     // โหลด .env ที่นี่โอเค
+require('dotenv').config();
 const app = require('./app');
 
 const PORT = process.env.PORT || 3000;

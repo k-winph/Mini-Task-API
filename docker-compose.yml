@@ -17,14 +17,14 @@ services:
     container_name: mini_phpmyadmin
     restart: unless-stopped
     environment:
-      PMA_HOST: db          # ชี้ไปที่ชื่อ service ของ MySQL ใน compose (คือ "db")
+      PMA_HOST: db
       PMA_PORT: 3306
       PMA_USER: root
       PMA_PASSWORD: password
     depends_on:
       - db
     ports:
-      - "8081:80"           # เปิดใช้ผ่าน http://localhost:8081
+      - "8081:80"
 
 volumes:
   dbdata:

@@ -32,6 +32,7 @@ CREATE TABLE `Task` (
 -- CreateTable
 CREATE TABLE `IdempotencyKey` (
     `id` INTEGER NOT NULL AUTO_INCREMENT,
+    `key` VARCHAR(191) NOT NULL,
     `userId` INTEGER NOT NULL,
     `endpoint` VARCHAR(191) NOT NULL,
     `requestHash` VARCHAR(191) NOT NULL,
@@ -39,6 +40,7 @@ CREATE TABLE `IdempotencyKey` (
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `expiresAt` DATETIME(3) NOT NULL,
 
+    UNIQUE INDEX `IdempotencyKey_key_key`(`key`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
