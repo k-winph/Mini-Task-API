@@ -166,14 +166,13 @@ router.post('/', authenticate, idempotency, async (req, res, next) => {
 
     const wantsHigh = (priority || 'medium') === 'high';
     if (wantsHigh) {
-      const u = req.user || {};
-      const isPremiumValid = !!u.isPremium && u.subscriptionExpiry && new Date(u.subscriptionExpiry) > new Date();
-      const allowed = u.role === 'admin' || isPremiumValid;
+      const role = req.user?.role;
+      const allowed = role === 'admin' || role === 'premium';
       if (!allowed) {
         return res.status(403).json({
           error: {
             code: 'FORBIDDEN_HIGH_PRIORITY',
-            message: 'High priority requires premium (active) or admin',
+            message: 'High priority requires role premium or admin',
           },
         });
       }
@@ -271,14 +270,13 @@ router.put('/:id', parseIdParam, authenticate, abac(canAccessTask), async (req, 
     }
 
     if (priority === 'high') {
-      const u = req.user || {};
-      const isPremiumValid = !!u.isPremium && u.subscriptionExpiry && new Date(u.subscriptionExpiry) > new Date();
-      const allowed = u.role === 'admin' || isPremiumValid;
+      const role = req.user?.role;
+      const allowed = role === 'admin' || role === 'premium';
       if (!allowed) {
         return res.status(403).json({
           error: {
             code: 'FORBIDDEN_HIGH_PRIORITY_UPDATE',
-            message: 'Only active premium users or admin can set priority to high',
+            message: 'Only role premium or admin can set priority to high',
           },
         });
       }
