@@ -10,8 +10,8 @@ Built with **Node.js + Express + Prisma + MySQL**, documented via **Swagger (Ope
 ### 1.1 Prerequisites
 - Node.js v18+ (recommended v20+)
 - MySQL 8.0+
-- Docker (optional for local DB)
-- npm or yarn
+- Docker
+- npm
 
 ### 1.2 Installation
 ```bash
@@ -40,6 +40,17 @@ TRUST_PROXY=false
 
 ## 🗄️ 2. Database Setup
 
+```bash
+docker compose up -d
+```
+
+# Recommended with dotenv-cli
+```bash
+npx dotenv -e .env -- prisma migrate dev --name init
+npx dotenv -e .env -- prisma generate
+```
+
+# If you already exported DATABASE_URL
 ```bash
 npx prisma migrate dev --name init
 npx prisma generate
