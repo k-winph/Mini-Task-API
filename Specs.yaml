@@ -1,0 +1,504 @@
+openapi: 3.0.0
+info:
+  title: Mini Task API
+  version: 1.0.0
+  description: ''
+servers:
+  - url: '{{base_url}}'
+tags:
+  - name: 01 Auth
+  - name: 02 User
+  - name: 03 Task v1
+  - name: 04 Task v2
+  - name: 05 Security & Policies
+
+paths:
+  /api/v1/auth/register:
+    post:
+      summary: Register-User
+      tags: [01 Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, name]
+              properties:
+                email:    { type: string, format: email }
+                password: { type: string, format: password }
+                name:     { type: string }
+      responses:
+        '201':
+          description: User registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400': { description: Bad request }
+        '409': { description: Email already exists }
+
+  /api/v1/auth/login:
+    post:
+      summary: Login-User
+      tags: [01 Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:    { type: string, format: email }
+                password: { type: string, format: password }
+      responses:
+        '200':
+          description: Logged in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokens'
+        '401': { description: Invalid credentials }
+
+  /api/v1/auth/refresh:
+    post:
+      summary: Refresh-User
+      tags: [01 Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses:
+        '200':
+          description: New access token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokens'
+        '400': { description: Bad request }
+        '401': { description: Invalid refresh token }
+
+  /api/v1/auth/logout:
+    post:
+      summary: Logout-User
+      tags: [01 Auth]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses:
+        '204': { description: Logged out }
+        '401': { description: Unauthorized }
+
+  /api/v1/users/me:
+    get:
+      summary: Me-User
+      tags: [02 User]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current user profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401': { description: Unauthorized }
+    put:
+      summary: Update Me-User
+      tags: [02 User]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:   { type: string }
+                email:  { type: string, format: email }
+      responses:
+        '200':
+          description: Profile updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400': { description: Bad request }
+        '401': { description: Unauthorized }
+    delete:
+      summary: Delete Me-User
+      tags: [02 User]
+      security:
+        - bearerAuth: []
+      responses:
+        '204': { description: Deleted }
+        '401': { description: Unauthorized }
+
+  /api/v1/users:
+    get:
+      summary: All User-Admin
+      tags: [02 User]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List users (admin)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/User' }
+        '401': { description: Unauthorized }
+        '403': { description: Forbidden }
+
+  /api/v1/tasks:
+    post:
+      summary: Create Task-User
+      tags: [03 Task v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          schema: { type: string }
+          required: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title:    { type: string }
+                priority: { type: string, enum: [low, medium, high] }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BasicTask' }
+        '400': { description: Bad request }
+        '401': { description: Unauthorized }
+        '409': { description: Idempotency conflict }
+    get:
+      summary: List-User
+      tags: [03 Task v1]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List tasks (basic)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/BasicTask' }
+        '401': { description: Unauthorized }
+
+  /api/v1/tasks/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer }
+    get:
+      summary: Task Id-User
+      tags: [03 Task v1]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Task (basic)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BasicTask' }
+        '401': { description: Unauthorized }
+        '404': { description: Not found }
+    put:
+      summary: Full update-User
+      tags: [03 Task v1]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title:  { type: string }
+                status: { type: string, enum: [pending, in_progress, completed] }
+      responses:
+        '200':
+          description: Updated (basic)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BasicTask' }
+        '400': { description: Bad request }
+        '401': { description: Unauthorized }
+        '403': { description: Forbidden }
+    delete:
+      summary: Delete Task-User
+      tags: [03 Task v1]
+      security:
+        - bearerAuth: []
+      responses:
+        '204': { description: Deleted }
+        '401': { description: Unauthorized }
+        '403': { description: Forbidden }
+
+  /api/v1/tasks/{id}/status:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer }
+    patch:
+      summary: Update status-User
+      tags: [03 Task v1]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [pending, in_progress, completed] }
+      responses:
+        '200':
+          description: Status updated (basic)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BasicTask' }
+        '400': { description: Bad request }
+        '401': { description: Unauthorized }
+        '403': { description: Forbidden }
+
+  /api/v2/tasks:
+    post:
+      summary: Create Task-User
+      tags: [04 Task v2]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          schema: { type: string }
+          required: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title:       { type: string }
+                description: { type: string }
+                priority:    { type: string, enum: [low, medium, high] }
+                isPublic:    { type: boolean }
+      responses:
+        '201':
+          description: Created (full task)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Task' }
+        '400': { description: Bad request }
+        '401': { description: Unauthorized }
+        '403': { description: Forbidden (e.g. high priority w/o premium/admin) }
+        '409': { description: Idempotency conflict }
+    get:
+      summary: List-User
+      description: Returns visible tasks. Auth optional.
+      tags: [04 Task v2]
+      responses:
+        '200':
+          description: Paged tasks
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PagedTasks' }
+
+  /api/v2/tasks/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer }
+    get:
+      summary: Task Id-User
+      tags: [04 Task v2]
+      responses:
+        '200':
+          description: Task (full)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Task' }
+        '404': { description: Not found }
+    put:
+      summary: Full update-User
+      tags: [04 Task v2]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title:       { type: string }
+                description: { type: string }
+                priority:    { type: string, enum: [low, medium, high] }
+                status:      { type: string, enum: [pending, in_progress, completed] }
+                isPublic:    { type: boolean }
+                assignedTo:  { type: integer, nullable: true }
+      responses:
+        '200':
+          description: Updated (full)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Task' }
+        '400': { description: Bad request }
+        '401': { description: Unauthorized }
+        '403': { description: Forbidden }
+    delete:
+      summary: Delete Task-User
+      tags: [04 Task v2]
+      security:
+        - bearerAuth: []
+      responses:
+        '204': { description: Deleted }
+        '401': { description: Unauthorized }
+        '403': { description: Forbidden }
+
+  /api/v2/tasks/{id}/status:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer }
+    patch:
+      summary: Update status-User
+      tags: [04 Task v2]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [pending, in_progress, completed] }
+      responses:
+        '200':
+          description: Status updated (full)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Task' }
+        '400': { description: Bad request }
+        '401': { description: Unauthorized }
+        '403': { description: Forbidden }
+
+  /health:
+    get:
+      summary: Health
+      tags: [05 Security & Policies]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean, example: true }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:    { type: string, example: INVALID_STATUS }
+            message: { type: string }
+            details: { nullable: true }
+            timestamp: { type: string, format: date-time }
+            path: { type: string }
+
+    User:
+      type: object
+      properties:
+        id:    { type: integer, example: 1 }
+        email: { type: string, format: email }
+        name:  { type: string }
+        role:  { type: string, enum: [user, premium, admin] }
+        isPremium: { type: boolean, example: false }
+
+    BasicTask:
+      type: object
+      properties:
+        id:     { type: integer, example: 10 }
+        title:  { type: string, example: "Fix bug" }
+        status: { type: string, enum: [pending, in_progress, completed], example: pending }
+
+    Task:
+      type: object
+      properties:
+        id:          { type: integer }
+        title:       { type: string }
+        description: { type: string, nullable: true }
+        status:      { type: string, enum: [pending, in_progress, completed] }
+        priority:    { type: string, enum: [low, medium, high] }
+        isPublic:    { type: boolean }
+        ownerId:     { type: integer }
+        assignedTo:  { type: integer, nullable: true }
+        createdAt:   { type: string, format: date-time }
+        updatedAt:   { type: string, format: date-time }
+
+    PagedTasks:
+      type: object
+      properties:
+        page:       { type: integer, example: 1 }
+        limit:      { type: integer, example: 10 }
+        total:      { type: integer, example: 42 }
+        totalPages: { type: integer, example: 5 }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Task' }
+
+    AuthTokens:
+      type: object
+      properties:
+        accessToken:  { type: string }
+        refreshToken: { type: string }
